@@ -370,4 +370,39 @@ describe("Holidays & Timezone Verification", () => {
     expect(parts.hour).toBe(17);
     expect(parts.minute).toBe(30);
   });
+
+  test("26. holiday normalization preserves calendar date for Date objects in negative UTC offset timezones", () => {
+    const nyTz = "America/New_York";
+    // Monday Aug 17 2026 09:00 EDT = 13:00 UTC
+    const monday0900EDT = new Date("2026-08-17T13:00:00.000Z");
+    // Holiday stored as midnight UTC Date: 2026-08-18 (Tuesday)
+    const tuesdayHolidayDate = new Date("2026-08-18T00:00:00.000Z");
+
+    // 10 business hours (600 min) SLA in NY: Mon 9h (09:00-18:00), Tue is holiday (0h), Wed 1h (09:00-10:00) -> Wed 10:00 EDT
+    const deadline = calculateBusinessDeadline(
+      monday0900EDT,
+      600,
+      [tuesdayHolidayDate],
+      nyTz
+    );
+    const parts = getZonedParts(deadline, nyTz);
+    expect(parts.day).toBe(19); // Wednesday Aug 19
+    expect(parts.hour).toBe(10); // 10:00 EDT
+  });
+
+  test("27. resolution on weekend correctly counts only prior business minutes", () => {
+    // Friday 17:30 IST = 12:00 UTC
+    const friday1730 = new Date("2026-08-21T12:00:00.000Z");
+    // Resolved Saturday 14:00 IST = 08:30 UTC
+    const saturday1400 = new Date("2026-08-22T08:30:00.000Z");
+
+    const consumed = calculateBusinessMinutesBetween(
+      friday1730,
+      saturday1400,
+      [],
+      TIMEZONE
+    );
+    // Friday 17:30 to 18:00 is 30 minutes; Saturday is non-working (0 min)
+    expect(consumed).toBe(30);
+  });
 });

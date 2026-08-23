@@ -119,19 +119,33 @@ export function normalizeHolidays(
 
   for (const h of holidays) {
     if (h instanceof Date) {
-      const parts = getZonedParts(h, timezone);
-      normalized.add(parts.dateKey);
+      if (h.getUTCHours() === 0 && h.getUTCMinutes() === 0 && h.getUTCSeconds() === 0) {
+        normalized.add(h.toISOString().slice(0, 10));
+      } else {
+        const parts = getZonedParts(h, timezone);
+        normalized.add(parts.dateKey);
+      }
     } else if (typeof h === "string") {
       if (h.length === 10 && h.includes("-")) {
         normalized.add(h);
+      } else if (h.includes("T")) {
+        normalized.add(h.slice(0, 10));
       } else {
         const d = new Date(h);
-        const parts = getZonedParts(d, timezone);
-        normalized.add(parts.dateKey);
+        if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
+          normalized.add(d.toISOString().slice(0, 10));
+        } else {
+          const parts = getZonedParts(d, timezone);
+          normalized.add(parts.dateKey);
+        }
       }
     } else if (typeof h === "object" && h !== null && "date" in h && h.date instanceof Date) {
-      const parts = getZonedParts(h.date, timezone);
-      normalized.add(parts.dateKey);
+      if (h.date.getUTCHours() === 0 && h.date.getUTCMinutes() === 0 && h.date.getUTCSeconds() === 0) {
+        normalized.add(h.date.toISOString().slice(0, 10));
+      } else {
+        const parts = getZonedParts(h.date, timezone);
+        normalized.add(parts.dateKey);
+      }
     }
   }
 
