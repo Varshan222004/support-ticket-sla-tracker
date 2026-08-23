@@ -2,32 +2,35 @@
 
 A full-stack support ticket management system and deterministic business-hours SLA tracking engine. The system enforces role-based ticket workflows while authoritatively calculating first-response and resolution deadlines strictly within configured business hours (excluding nights, weekends, and holidays). Built with a schema-first GraphQL API, PostgreSQL persistence, and a React TypeScript dashboard.
 
-## 1. Features
+---
 
-- **Authentication & Roles**: Secure bcrypt hashing and stateless JWT auth with strict `REPORTER` (customer) and `AGENT` (staff) role separation.
-- **Ticket Lifecycle**: Enforced state transitions (`OPEN` → `IN_PROGRESS` → `RESOLVED` → `CLOSED`) with server-side validation.
-- **Assignment & Comments**: Staff triage and assignment with real-time threaded discussion timelines.
-- **Deterministic SLA Engine**: Dual-clock tracking (First Response and Resolution) computed strictly during business hours.
-- **Milestone SLA Freezing**: Response SLA freezes on the first non-reporter comment; resolution SLA freezes when marked resolved.
-- **Configurable Holidays & Timezones**: Database-backed holiday exclusion and IANA timezone support.
-- **Dashboard & KPIs**: Real-time agent metrics for Open, In Progress, At Risk, and Breached tickets.
-- **Cursor-Based Pagination & Filtering**: Scalable ticket querying by status, priority, assignee, and SLA state.
-- **Error Handling**: Domain-driven GraphQL error extensions with machine-readable error codes.
+## 1. Project Overview
+
+Support teams need SLA measurement that strictly reflects operational business commitments rather than raw wall-clock time. This application tracks support tickets with dual SLA clocks (First Response and Resolution) calculated deterministically server-side.
+
+- **Dual-Clock SLA Engine**: Computes first response and resolution targets strictly during business hours (Mon–Fri, 09:00–18:00).
+- **Milestone Clock Freezing**: Response clock freezes upon the first non-reporter comment; resolution clock freezes when the ticket is marked resolved.
+- **Role-Based Workflows**: Scoped access for customers (`REPORTER`) and full operational control for staff (`AGENT`).
+- **Backend-Driven Presentation**: Frontend displays authoritative server-calculated SLA states and countdowns without client-side business calculations.
+
+---
 
 ## 2. Tech Stack
 
 | Layer | Technology | Purpose |
 | :--- | :--- | :--- |
-| **Runtime** | Bun v1.4+ | Fast JavaScript/TypeScript runtime & package manager |
-| **Language** | TypeScript | End-to-end type safety across backend and frontend |
+| **Runtime** | Bun v1.4+ / Node.js | Fast JavaScript/TypeScript runtime & package manager |
+| **Language** | TypeScript (Strict Mode) | End-to-end type safety across backend and frontend (zero `any`) |
 | **API Layer** | GraphQL Yoga + GraphQL v17 | Schema-first execution, context injection & error handling |
-| **Database & ORM** | PostgreSQL 16 + Prisma ORM v6 | Relational persistence, migrations, and schema modeling |
-| **Auth** | `jose` (JWT) + `Bun.password` (bcrypt) | Stateless tokens and secure password hashing |
+| **Database & ORM** | PostgreSQL 16 + Prisma ORM v6 | Relational persistence, migrations, and relational modeling |
+| **Authentication** | `jose` (JWT) + `Bun.password` (bcrypt) | Stateless HS256 tokens and secure password hashing (cost 10) |
 | **Frontend** | React 19 + TypeScript + Vite | Component-based UI with React Router v7 |
 | **Styling** | Vanilla CSS (CSS Variables) | Custom design system with glassmorphic cards and badges |
-| **Local DB** | Docker Compose | Local PostgreSQL 16 containerized instance |
+| **Containerization**| Docker Compose | Containerized PostgreSQL 16 local database service |
 
-## 3. Architecture
+---
+
+## 3. Architecture Overview
 
 ```text
 Frontend (React 19 SPA) ──HTTP POST /graphql (Bearer JWT)──> GraphQL Yoga Server
@@ -43,71 +46,58 @@ Frontend (React 19 SPA) ──HTTP POST /graphql (Bearer JWT)──> GraphQL Yog
                                                             Prisma ORM Client ──> PostgreSQL 16
 ```
 
-- **Resolvers**: Thin transport controllers that extract auth context and delegate directly to domain services.
-- **Domain Services**: Encapsulate all business logic, permission rules, and state validations outside resolvers.
-- **SLA Engine**: Pure calculation module that evaluates business deadlines and consumption without side effects.
+- **Resolvers**: Thin transport controllers that validate auth context and delegate to domain services.
+- **Domain Services**: Encapsulate all business logic, permission rules, and state machine validations.
+- **SLA Service**: Pure mathematical engine evaluating deadlines and consumption without side effects.
 - **Prisma & PostgreSQL**: Enforces database-level foreign key constraints, indexes, and transactional integrity.
 
-## 4. Project Structure
+---
 
-```text
-Support-Ticket-SLA-Tracker/
-├── docker-compose.yml          # PostgreSQL 16 container service
-├── package.json                # Workspace scripts (typecheck, test, dev)
-├── backend/
-│   ├── prisma/
-│   │   ├── schema.prisma       # Prisma data models, enums & indexes
-│   │   ├── seed.ts             # Idempotent development seed data
-│   │   └── migrations/         # PostgreSQL migration history
-│   └── src/
-│       ├── server.ts           # Bun HTTP server & GraphQL Yoga setup
-│       ├── context.ts          # Auth & service context creation
-│       ├── auth/               # AuthService (registration, login, JWT)
-│       ├── ticket/             # TicketService (lifecycle, assignment, metrics)
-│       ├── sla/                # SLAService & business-hours calculation logic
-│       ├── errors/             # Domain errors with GraphQL error codes
-│       └── graphql/            # root.graphql schema & modular resolvers
-└── frontend/
-    └── src/
-        ├── App.tsx             # React Router routing & route guards
-        ├── auth/               # AuthContext & token storage
-        ├── graphql/            # Typed GraphQL client & operations
-        ├── pages/              # Dashboard, Tickets, CreateTicket, Details, Auth
-        └── components/         # AppShell, Layout, Badges & UI controls
-```
+## 4. Database Schema Overview
 
-## 5. Database Model
+The relational schema is managed via Prisma migrations:
 
-- **User**: Stores credentials (`passwordHash`), name, email (unique), and `UserRole` (`REPORTER` | `AGENT`).
-- **Ticket**: Stores title, description, `Priority` (`LOW`, `MEDIUM`, `HIGH`, `URGENT`), `TicketStatus`, foreign keys (`reporterId`, nullable `assigneeId`), and milestone timestamps (`firstResponseAt`, `resolvedAt`).
-- **Comment**: Threaded activity messages linked to tickets and authors (`ticketId`, `authorId`). Cascade-deleted with tickets.
-- **Holiday**: Unique calendar dates (`date`, `name`) excluded from business-hour SLA calculations.
+- **`User`**: Stores `id`, `name`, `email` (unique), `passwordHash`, `role` (`REPORTER` | `AGENT`), and timestamps.
+- **`Ticket`**: Stores `id`, `title`, `description`, `priority` (`LOW`, `MEDIUM`, `HIGH`, `URGENT`), `status` (`OPEN`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`), `reporterId`, nullable `assigneeId`, `createdAt`, `firstResponseAt`, and `resolvedAt`.
+- **`Comment`**: Stores `id`, `content`, `ticketId`, `authorId`, and `createdAt`. Cascade-deleted with tickets.
+- **`Holiday`**: Stores unique calendar dates (`date`, `name`) excluded from business-hour calculations.
 
-*Relationships*: `User` 1:N `Ticket` (as reporter and assignee), `Ticket` 1:N `Comment`, `User` 1:N `Comment`.
+*Indexes*: Indexed on `status`, `priority`, `reporterId`, `assigneeId`, `createdAt`, `ticketId`, and `authorId` for performant filtering.
 
-## 6. Authentication & Authorization
+---
 
-- **Authentication**: Passwords are hashed with bcrypt (cost 10). Successful login/registration issues a signed HS256 JWT containing `sub` (User ID), `role`, and `email`.
-- **Context Injection**: GraphQL server extracts the `Authorization: Bearer <token>` header, verifies the JWT, and attaches the authenticated user to the request context.
-- **Role Permissions**:
-  - `REPORTER` (Requester): Can create tickets, view only their own reported tickets, and comment only on their own tickets.
-  - `AGENT` (Support Staff): Can view all tickets, assign tickets to agents, perform status transitions, resolve tickets, view all users, and access the dashboard KPI metrics.
+## 5. SLA Calculation Approach
 
-## 7. Ticket Lifecycle
+SLA calculations are implemented server-side as pure functions:
+1. **Target Calculation**: Translates `createdAt` into local business time, advances through working minutes (09:00–18:00), skips non-working periods (nights, weekends, holidays), and returns the UTC deadline.
+2. **Consumption Calculation**: Computes the exact working minutes elapsed between `createdAt` and either the milestone timestamp (if completed) or `now()`.
+3. **State Evaluation**: Evaluates elapsed business minutes against policy targets to derive real-time state and remaining minutes.
 
-```text
-[OPEN] ──(Agent assigns/starts)──> [IN_PROGRESS] ──(Agent resolves)──> [RESOLVED] ──(Agent closes)──> [CLOSED]
-```
+---
 
-- Status changes must follow allowed forward paths; invalid transitions (e.g. `OPEN` → `RESOLVED` or modifying `CLOSED`) are rejected server-side with `INVALID_STATUS_TRANSITION`.
-- Transitioning to `RESOLVED` automatically stamps `resolvedAt` if not already set.
+## 6. Business Hours, Weekends & Holidays
 
-## 8. SLA Engine
+- **Business Hours**: Monday through Friday, **09:00 to 18:00** (9 business hours / 540 minutes per working day).
+- **Nights & Weekends**: Time outside 09:00–18:00 and all hours on Saturday and Sunday contribute 0 business minutes.
+- **Holidays**: Calendar dates present in the `Holiday` table contribute 0 business minutes.
+- **Carryover Example**: A `HIGH` priority ticket (4h target) created **Friday at 17:00**:
+  - Friday 17:00–18:00 consumes **1 business hour** (3 hours remaining).
+  - Weekend (Saturday & Sunday) contributes **0 business hours**.
+  - Monday 09:00–12:00 consumes remaining **3 business hours** → **Due Monday at 12:00**.
 
-### Business Hours & Policies
-- **Working Schedule**: Monday through Friday, **09:00 to 18:00** (9 business hours / 540 minutes per working day).
-- **Excluded Time**: Non-working hours (nights), weekends (Saturday & Sunday), and dates in the `Holiday` table contribute 0 business minutes.
-- **Timezone**: All calculations run against `BUSINESS_TIMEZONE` (defaults to `Asia/Kolkata`), while timestamps are stored and transmitted in UTC ISO-8601 strings.
+---
+
+## 7. Timezone Handling
+
+- **Storage**: All database timestamps and API inputs/outputs are standardized in UTC ISO-8601 strings.
+- **Calculation**: Business hours are evaluated in the configured `BUSINESS_TIMEZONE` (defaults to `Asia/Kolkata`).
+- **Date Normalization**: Calendar holidays are normalized to universal date keys (`YYYY-MM-DD`), preventing calendar shifts in negative UTC offset timezones.
+
+---
+
+## 8. SLA Policies
+
+Default priority durations configured in the engine:
 
 | Priority | First Response Target | Resolution Target |
 | :--- | :--- | :--- |
@@ -116,126 +106,210 @@ Support-Ticket-SLA-Tracker/
 | **MEDIUM** | 8 business hours (480 min) | 48 business hours (2,880 min / ~5.33 business days) |
 | **LOW** | 24 business hours (1,440 min) | 72 business hours (4,320 min / 8 business days) |
 
-### SLA States & Freezing
-- **`ON_TRACK`**: Consumed business time is ≤ 75% of target duration.
-- **`AT_RISK`**: Consumed business time is > 75% of target duration and deadline has not passed.
-- **`BREACHED`**: Current time has exceeded the calculated deadline before milestone completion.
-- **Clock Freezing**: When the first non-reporter comment is created, `firstResponseAt` is recorded and First Response SLA freezes permanently. When a ticket is resolved, `resolvedAt` is recorded and Resolution SLA freezes permanently.
+---
 
-## 9. Example SLA Calculation
+## 9. SLA State Rules
 
-**Ticket**: `HIGH` Priority (4h First Response Target), created on **Friday at 17:00**.
-1. **Friday 17:00–18:00**: Consumes **1 business hour** (3 hours remaining).
-2. **Friday 18:00 – Monday 09:00**: Weekend is skipped (0 business hours consumed).
-3. **Monday 09:00–12:00**: Consumes remaining **3 business hours**.
-4. **Target First Response Deadline**: **Monday at 12:00**.
+Each SLA clock evaluates to one of three states:
 
-## 10. GraphQL API
+- **`ON_TRACK`**: Consumed business time is ≤ 75% of policy target.
+- **`AT_RISK`**: Consumed business time is > 75% of policy target and current time is on or before the deadline.
+- **`BREACHED`**: Current time has passed the calculated deadline before milestone completion.
 
-### Operations
-- **Queries**: `tickets(status, priority, assigneeId, slaState, take, cursor)`, `ticket(id)`, `dashboard`, `users(role)`, `holidays`, `health`.
-- **Mutations**: `register(name, email, password, role)`, `login(email, password)`, `createTicket(title, description, priority)`, `assignTicket(ticketId, assigneeId)`, `changeTicketStatus(ticketId, status)`, `resolveTicket(ticketId)`, `addComment(ticketId, content)`.
+---
+
+## 10. SLA Milestone Freezing (First Response & Resolution)
+
+- **First Response Milestone**: Triggered when the first comment from a non-reporter (`AGENT`) is added. `firstResponseAt` is recorded, and the first-response SLA clock freezes permanently at that timestamp. Subsequent comments do not alter this timestamp.
+- **Resolution Milestone**: Triggered when a ticket transitions to `RESOLVED`. `resolvedAt` is stamped, and the resolution SLA clock freezes permanently.
+- **Immutable Historical Record**: Once frozen, completed SLA clocks will never transition to `BREACHED`, even if viewed days later.
+- **24/7 Operations**: Support staff can execute ticket actions on weekends or outside business hours; the SLA engine clamps elapsed business time strictly to working hours.
+
+---
+
+## 11. Ticket Status Transitions
+
+Ticket lifecycle follows an enforced forward state machine:
+
+```text
+[OPEN] ──(Agent assigns/starts)──> [IN_PROGRESS] ──(Agent resolves)──> [RESOLVED] ──(Agent closes)──> [CLOSED]
+```
+
+- Disallowed transitions (e.g. `OPEN` → `RESOLVED`, `CLOSED` → `IN_PROGRESS`) are rejected server-side with `INVALID_STATUS_TRANSITION`.
+- Transitioning to `RESOLVED` automatically populates `resolvedAt`.
+
+---
+
+## 12. Authentication & Authorization
+
+- **Authentication**: Passwords are encrypted with bcrypt (cost factor 10). Stateless HS256 JWT tokens encode user ID, email, and role.
+- **Context Extraction**: The server validates the `Authorization: Bearer <token>` header and injects the authenticated user into GraphQL context.
+- **Server-Side RBAC**:
+  - `REPORTER`: Can create tickets, view only their own reported tickets, and comment only on their own tickets.
+  - `AGENT`: Can view all tickets, assign tickets to agents, change ticket status, resolve tickets, view user lists, and access dashboard metrics.
+
+---
+
+## 13. Validation & Error Handling
+
+Domain exceptions extend `GraphQLError` and return structured extensions with machine-readable error codes:
+
+| Error Code | Trigger Condition |
+| :--- | :--- |
+| `VALIDATION_ERROR` | Empty title/description, short password (<6 chars), invalid email or enum |
+| `UNAUTHORIZED` | Missing, invalid, or expired JWT token |
+| `FORBIDDEN` | Insufficient role permissions or accessing another user's ticket |
+| `INVALID_STATUS_TRANSITION` | Attempting an invalid lifecycle status jump |
+| `TICKET_NOT_FOUND` | Target ticket ID does not exist |
+| `USER_NOT_FOUND` | Target user ID does not exist |
+| `DUPLICATE_EMAIL` | Registering with an existing email address |
+| `INVALID_CREDENTIALS` | Incorrect login email or password |
+
+---
+
+## 14. GraphQL API Overview
+
+### Core Schema Contract
+- **Queries**: `tickets(...)`, `ticket(id)`, `dashboard`, `users(role)`, `holidays`, `health`.
+- **Mutations**: `register(...)`, `login(...)`, `createTicket(...)`, `assignTicket(...)`, `changeTicketStatus(...)`, `resolveTicket(...)`, `addComment(...)`.
 
 ### Sample Query
 ```graphql
-query GetTicketWithSLA($id: ID!) {
+query GetTicketDetails($id: ID!) {
   ticket(id: $id) {
-    id title status priority
+    id
+    title
+    status
+    priority
+    firstResponseAt
+    resolvedAt
     sla {
-      firstResponseDueAt resolutionDueAt
-      firstResponseState resolutionState
+      firstResponseDueAt
+      resolutionDueAt
+      firstResponseState
+      resolutionState
       firstResponseRemainingMinutes
+      resolutionRemainingMinutes
     }
   }
 }
 ```
 
-## 11. Validation & Error Handling
+---
 
-Domain exceptions inherit from `GraphQLError` and expose machine-readable codes in `extensions.code`:
-- `VALIDATION_ERROR`: Empty fields, invalid emails, short passwords (<6 chars), invalid enums.
-- `UNAUTHORIZED`: Missing, invalid, or expired JWT token.
-- `FORBIDDEN`: Role permission violations (e.g. reporter accessing other tickets or dashboard).
-- `INVALID_STATUS_TRANSITION`: Attempting disallowed lifecycle jumps.
-- `TICKET_NOT_FOUND` / `USER_NOT_FOUND`: Target entity missing in database.
-- `DUPLICATE_EMAIL` / `INVALID_CREDENTIALS`: Authentication failures.
+## 15. Pagination & Filtering
 
-## 12. Frontend
+- **Cursor-Based Pagination**: Ticket listing queries accept `take: Int` and `cursor: String` (ticket ID), returning `TicketConnection` with `nodes` and `PageInfo { hasNextPage, endCursor }`.
+- **Database Cursor Query**: Standard queries order deterministically by `[createdAt DESC, id DESC]` using Prisma's native cursor pagination.
+- **Dynamic SLA Filtering**: When filtering by dynamic `slaState`, candidate database records matching static filters are evaluated against the real-time SLA engine in memory, then cursor-sliced to maintain stable pagination.
 
-- **Auth & Route Guards**: Public pages (`/login`, `/register`) and protected application routes (`/dashboard`, `/tickets`, `/tickets/:id`, `/tickets/new`) with role-based redirection.
-- **Agent Dashboard**: Real-time KPI summary counters (Open, In Progress, At Risk, Breached) with quick-filter deep links.
-- **Ticket Queue**: Multi-attribute filtering (Status, Priority, Assignee, SLA state) with forward cursor pagination.
-- **Ticket Details**: Status action buttons, staff assignment dropdown, SLA status cards, and real-time comment stream with first-response badge.
+---
 
-## 13. Testing
+## 16. Environment Variables
 
-- **Suite**: **74 tests passing across 7 test files (191 assertions, 0 failures)**.
-- **Unit Tests**: Pure business-hours math, weekend carryover, holiday skips, boundary conditions (75% threshold), clock freezing, auth hashing/JWT, and TicketService logic.
-- **Integration Tests**: End-to-end GraphQL execution testing authentication, role permissions, and full ticket SLA lifecycles against PostgreSQL.
+| Variable | Description | Default / Example |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://support:support@localhost:5432/support_tracker` |
+| `JWT_SECRET` | Secret key for signing HS256 JWT tokens | `super-secret-jwt-key-min-32-chars-long` |
+| `JWT_EXPIRATION` | Token expiration duration | `7d` |
+| `BUSINESS_TIMEZONE` | IANA timezone for business hours | `Asia/Kolkata` |
+| `PORT` | Backend HTTP server port | `4000` |
 
-## 14. Setup & Running
+---
+
+## 17. Setup Instructions
 
 ```bash
-# 1. Install dependencies
+# 1. Install workspace dependencies
 bun install
 
 # 2. Configure environment variables
 cp .env.example .env
 cp backend/.env.example backend/.env
 
-# 3. Start PostgreSQL container
+# 3. Start local PostgreSQL 16 container
 docker compose up -d
+```
 
-# 4. Run database migrations & seed data
+---
+
+## 18. Database Migration Instructions
+
+```bash
+# Run Prisma migrations against PostgreSQL
 cd backend
 bun run db:migrate
+cd ..
+```
+
+---
+
+## 19. Seed Data & Demo Credentials
+
+```bash
+# Populate database with initial users, tickets, and holidays
+cd backend
 bun run db:seed
 cd ..
+```
 
-# 5. Start Backend server (Terminal 1) -> http://localhost:4000/graphql
+Default demo accounts (Password: `Password123!`):
+- **Reporter**: `reporter@example.com` (`REPORTER` role)
+- **Agent**: `agent@example.com` (`AGENT` role)
+
+---
+
+## 20. How to Run Backend
+
+```bash
+# Start backend server on http://localhost:4000/graphql
 bun run dev:backend
+```
 
-# 6. Start Frontend application (Terminal 2) -> http://localhost:5173
+---
+
+## 21. How to Run Frontend
+
+```bash
+# Start frontend development server on http://localhost:5173
 bun run dev:frontend
 ```
 
-## 15. Environment Variables
+---
 
-| Variable | Description | Default / Example |
-| :--- | :--- | :--- |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://support:support@localhost:5432/support_tracker` |
-| `JWT_SECRET` | Secret key for signing HS256 tokens | Long secure random string |
-| `JWT_EXPIRATION` | Token validity duration | `7d` |
-| `BUSINESS_TIMEZONE` | IANA timezone for business hours | `Asia/Kolkata` |
-| `PORT` | Backend HTTP port | `4000` |
+## 22. How to Run Tests
 
-## 16. Seed Data
+```bash
+# 1. Run backend unit & integration tests
+bun run test
 
-Seeded via `bun run db:seed` with default password `Password123!`:
-- **Reporter**: `reporter@example.com` (`REPORTER` role)
-- **Agent**: `agent@example.com` (`AGENT` role)
-- Pre-seeded tickets across Urgent, High, Medium, and Low priorities with threaded comments and configured public holidays.
+# 2. Run TypeScript typecheck across backend and frontend
+bun run typecheck
 
-## 17. Design Decisions & Tradeoffs
+# 3. Build frontend production bundle
+cd frontend && bun run build && cd ..
+```
 
-- **Backend-Authoritative SLA**: All SLA deadlines and states are calculated by the backend to prevent clock-drift discrepancies.
-- **Pure SLA Engine**: Calculation logic uses native `Intl` and `Date.UTC` without external date dependencies, simplifying testing.
-- **Schema-First GraphQL**: Explicit `.graphql` contract decouples API design from database schema and client implementations.
-- **Cursor-Based Pagination**: Orders by `[createdAt DESC, id DESC]` for deterministic pagination resilient to real-time insertions.
-- **Server-Side Role Guarding**: Authorization enforced at the service level rather than relying on frontend UI hiding.
+*Test Suite*: **76 automated tests across 7 test files (194 assertions, 0 failures)** covering business-hours math, holiday skips, DST, clock freezing, RBAC, GraphQL operations, and live PostgreSQL integration.
 
-## 18. Known Limitations
+---
 
-- **Single Business Calendar**: Supports one global timezone and holiday set rather than multi-tenant customer schedules.
-- **No SLA Pause on Customer Pending**: Clocks run continuously during business hours without a "Waiting on Customer" pause state.
-- **In-Memory SLA Filtering**: Tickets matching SLA states are filtered dynamically in memory after fetching database candidates.
-- **No Asynchronous Event Notifications**: Does not include email, webhook, or WebSocket push notifications for SLA breaches.
+## 23. Known Limitations & Tradeoffs
 
-## 19. Interview Walkthrough Guide
+- **In-Memory SLA Filtering**: Because SLA status is a dynamic function of `now()`, queries filtering by `slaState` evaluate calculated states in memory. For massive datasets, this would be optimized via background projections or cached materialized views.
+- **Single Global Business Calendar**: Configured for one global timezone and holiday set rather than multi-tenant customer-specific schedules.
+- **Continuous SLA Clock**: Does not include a "Waiting on Customer" pause status; clocks count continuously during business hours.
+- **No Background Push Notifications**: SLA breach alerts are calculated dynamically on query rather than dispatched via background worker webhooks/emails.
 
-1. **Problem**: Standard elapsed time unfairly penalizes support teams; SLA tracking requires strict business-hour accounting.
-2. **Architecture**: Clean layered architecture separating GraphQL transport, domain services, SLA calculation, and Prisma ORM.
-3. **Authentication**: Stateless JWT auth with bcrypt password hashing and strict `REPORTER` vs `AGENT` role boundaries.
+---
+
+## 24. How I'd Extend This
+
+- **SLA Pause on Customer Response**: Introduce `WAITING_ON_CUSTOMER` status that suspends the SLA consumption timer until the customer replies.
+- **Escalation & Notifications**: Background worker triggering automated webhook/email notifications when tickets enter `AT_RISK` or `BREACHED` status.
+- **Per-Tenant Business Calendars**: Support custom business hours, timezones, and regional holiday calendars per organization or priority tier.
+- **Audit Logging**: Structured historical audit trail logging every assignee change, status transition, and SLA milestone event.
+ord hashing and strict `REPORTER` vs `AGENT` role boundaries.
 4. **Ticket Workflow**: Strict server-enforced state machine (`OPEN` → `IN_PROGRESS` → `RESOLVED` → `CLOSED`).
 5. **SLA Engine**: Computes exact working-minute consumption across day boundaries, weekends, and holidays.
 6. **Milestone Freezing**: Response and resolution clocks permanently freeze upon respective event timestamps.
